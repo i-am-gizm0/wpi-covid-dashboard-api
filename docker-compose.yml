@@ -1,0 +1,9 @@
+version: "3"
+
+services:
+    covid-dashboard:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: covid-dashboard
+        restart: unless-stopped

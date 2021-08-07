@@ -1,0 +1,10 @@
+{
+    "buildOptions": {
+        "target": "esnext",
+        "moduleResolution": "node",
+        "outdir": "./build"
+    },
+    "compilerOptions": {
+        "esModuleInterop": true
+    }
+}
