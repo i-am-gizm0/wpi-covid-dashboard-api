@@ -6,6 +6,7 @@ import now from 'performance-now';
 import type { SecondaryInfo } from './ResponseTypes';
 
 let cachedResponse: string;
+let originalCacheTime: number;
 let cacheTime: number = 0;
 let cacheTiming: {metric?: string, desc?: string, time?: number}[] = [];
 
@@ -148,7 +149,7 @@ app.get('/', async (req, res) => {
             console.log('Cache Hit!');
         }
         
-        res.setHeader('Age', Math.floor((Date.now() - cacheTime) / 1000));
+        res.setHeader('Age', Math.floor((Date.now() - originalCacheTime) / 1000));
         res.setHeader('Expires', new Date(cacheTime + CACHE_EXPIRE_TIME).toUTCString());
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.status(200);
@@ -169,7 +170,7 @@ app.post('/update', async (req, res) => {
         res.setHeader('Server-Timing', timingArrayToString(cacheTiming));
         console.log(`Server-Timing: ${timingArrayToString(cacheTiming)}`);
 
-        res.setHeader('Age', Math.floor((Date.now() - cacheTime) / 1000));
+        res.setHeader('Age', Math.floor((Date.now() - originalCacheTime) / 1000));
         res.setHeader('Expires', new Date(cacheTime + CACHE_EXPIRE_TIME).toUTCString());
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.status(200);
@@ -186,8 +187,13 @@ app.listen(80, () => {
 });
 
 async function updateCache() {
+    const oldResponse = cachedResponse;
     cachedResponse = JSON.stringify(parseData(await loadData()));
     cacheTime = Date.now();
+    if (oldResponse !== cachedResponse) {
+        console.log('Cache Updated!');
+        originalCacheTime = cacheTime;
+    }
 }
 
 async function promiseTimeout <T> (ms: number, rejectReason: string, promise: Promise<T>): Promise<T> {

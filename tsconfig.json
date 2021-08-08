@@ -3,8 +3,7 @@
     "exclude": ["node_modules/**/*"],
     "buildOptions": {
         "target": "esnext",
-        "moduleResolution": "node",
-        "outdir": "./build"
+        "moduleResolution": "node"
     },
     "compilerOptions": {
         "esModuleInterop": true
