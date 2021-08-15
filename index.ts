@@ -7,6 +7,7 @@ import type { SecondaryInfo } from './ResponseTypes';
 
 let cachedResponse: string;
 let originalCacheTime: number;
+let cachedData: { [x: string]: any; };
 let cacheTime: number = 0;
 let cacheTiming: {metric?: string, desc?: string, time?: number}[] = [];
 
@@ -161,6 +162,45 @@ app.get('/', async (req, res) => {
     }
 });
 
+app.get('/metrics', async (req, res) => {
+    console.log('GET /metrics');
+    // Check if we have a cached response and that it hasn't expired
+    res.type('text');
+    try {
+        if (!cachedData || (Date.now() - cacheTime) > CACHE_EXPIRE_TIME) {
+            console.log('Cache Miss!');
+            await updateCache();
+            res.setHeader('Server-Timing', timingArrayToString(cacheTiming));
+            console.log(`Server-Timing: ${timingArrayToString(cacheTiming)}`);
+        } else {
+            console.log('Cache Hit!');
+        }
+        res.setHeader('Age', Math.floor((Date.now() - originalCacheTime) / 1000));
+        res.setHeader('Expires', new Date(cacheTime + CACHE_EXPIRE_TIME).toUTCString());
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.status(200);
+        const output = [
+            gaugeGenerator({help: 'The age of this data', key: 'wpi_covid_age', value: Math.floor((Date.now() - originalCacheTime) / 1000)}),
+            gaugeGenerator({help: 'Percentage of tests over the last 30 days that came back positive', key: 'wpi_covid_30_day_positive_ratio', value: cachedData['30_day_positive_rate']}),
+            gaugeGenerator({help: 'Number of tests over the last 30 days that came back positive', key: 'wpi_covid_30_day_positives', value: cachedData['30_day_positives']}),
+            gaugeGenerator({help: 'Number of tests administered over the last 30 days', key: 'wpi_covid_30_day_tests', value: cachedData['30_day_tests']}),
+            gaugeGenerator({help: 'Percentage of tests over the last 7 days that came back positive', key: 'wpi_covid_7_day_positive_ratio', value: cachedData['7_day_positive_rate']}),
+            gaugeGenerator({help: 'Number of tests over the last 7 days that came back positive', key: 'wpi_covid_7_day_positives', value: cachedData['7_day_positives']}),
+            gaugeGenerator({help: 'Number of tests administered over the last 7 days', key: 'wpi_covid_7_day_tests', value: cachedData['7_day_tests']}),
+            gaugeGenerator({help: 'Number of people in isolation off campus', key: 'wpi_covid_isolation_off_campus', value: cachedData['isolation_off_campus']}),
+            gaugeGenerator({help: 'Number of people in isolation on campus', key: 'wpi_covid_isolation_on_campus', value: cachedData['isolation_on_campus']}),
+            gaugeGenerator({help: 'Number of people in quarantine off campus', key: 'wpi_covid_quarantine_off_campus', value: cachedData['quarantine_off_campus']}),
+            gaugeGenerator({help: 'Number of people in quarantine on campus', key: 'wpi_covid_quarantine_on_campus', value: cachedData['quarantine_on_campus']}),
+        ].join('');
+        // console.log(output);
+        res.send(output);
+    } catch (e) {
+        console.warn(e);
+        res.status(500);
+        res.send(e);
+    }
+});
+
 // If we get a POST to /update, update the cached response
 app.post('/update', async (req, res) => {
     res.type('json');
@@ -188,7 +228,11 @@ app.listen(80, () => {
 
 async function updateCache() {
     const oldResponse = cachedResponse;
-    cachedResponse = JSON.stringify(parseData(await loadData()));
+    cachedResponse = JSON.stringify(
+        cachedData = parseData(
+            await loadData()
+        )
+    );
     cacheTime = Date.now();
     if (oldResponse !== cachedResponse) {
         console.log('Cache Updated!');
@@ -221,5 +265,21 @@ function timingArrayToString(timing: {metric?: string, desc?: string, time?: num
             output += `;dur=${time}`;
         }
     });
+    return output;
+}
+
+function gaugeGenerator({help, key, labels, value}: { help?: string; key: string; labels?:{[key: string]:string}, value: number; }) {
+    let output = '';
+    if (help) {
+        output += `# HELP ${key} ${help}\n`;
+    }
+    output += `# TYPE ${key} gauge\n`;
+    output += `${key}${labels?'{':''}`;
+    if (labels) {
+        Object.keys(labels).forEach((label, i, a) => {
+            output += `${label}="${labels[label]}"${a.length != 1 && i != a.length - 1 ? ',' : ''}`;
+        });
+    }
+    output += `${labels?'}':''} ${value}\n`;
     return output;
 }
